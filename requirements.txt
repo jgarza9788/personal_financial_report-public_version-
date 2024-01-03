@@ -1,0 +1,6 @@
+ipython>=8.15.0
+json5>=0.9.14
+numpy>=1.25.2
+pandas>=1.4.3
+plotly>=5.16.1
+seaborn>=0.13.1
