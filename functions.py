@@ -11,10 +11,10 @@ import numpy as np
 # used for displaying data and stuff
 from IPython.display import display, HTML 
 
-# used for charts and Graphs
-import plotly
-import plotly.express as px
-import seaborn as sns
+## used for charts and Graphs
+#import plotly
+#import plotly.express as px
+#import seaborn as sns
 
 
 ## set pandas options
@@ -35,8 +35,8 @@ old_data_DIR = os.path.join(DIR,'old_data')
 if os.path.exists(data_DIR) == False:
     os.mkdir(data_DIR)
 
-this_year = int(datetime.now().strftime("%Y"))
-this_month = int(datetime.now().strftime("%m"))
+# this_year = int(datetime.now().strftime("%Y"))
+# this_month = int(datetime.now().strftime("%m"))
 
 # print(this_year,this_month)
 
@@ -115,7 +115,7 @@ def process_new_data(new_csv=r'C:\Users\JGarza\Downloads\stmt.csv'):
             f.writelines(lines[6:])
 
     # turn into a dataframe
-    temp = pd.read_csv(new_csv)
+    temp = pd.read_csv(new_csv,encoding='utf-8')
 
     # reformat columns and stuff
     
@@ -194,7 +194,11 @@ def load_last_x_years(x,verbose=False):
         if verbose:
             print(file)
         file = os.path.join(data_DIR, file)
-        result = pd.concat([result, pd.read_csv(file)])
+        temp = pd.read_csv(file,encoding='utf-8')
+        result = pd.concat([result, temp ])
+
+    # if verbose:
+    #     print(result.columns.to_list())
 
     result = result.sort_values(by = 'YYYYMMDD',ascending=False)
     result = result.reset_index(drop=True)
@@ -211,7 +215,7 @@ def load_year(year):
     """
     try:
         file = os.path.join(data_DIR,'data_' + str(year) + '.csv')
-        return pd.read_csv(file)
+        return pd.read_csv(file,encoding='utf-8')
     except:
         print('Happy New Years!')
         
@@ -301,17 +305,17 @@ def clean_loc(s):
     takes in a string and clean it up...
     """
     s = s.upper()
-    s = re.sub('#\d+','',s)
-    s = re.sub('\d\d/\d\d','',s)
-    s = re.sub('\d{2,10}','',s)
-    s = re.sub('X{3,10}','',s)
-    s = re.sub('\s+',' ',s)
+    s = re.sub(r'#\d+','',s)
+    s = re.sub(r'\d\d/\d\d','',s)
+    s = re.sub(r'\d{2,10}','',s)
+    s = re.sub(r'X{3,10}','',s)
+    s = re.sub(r'\s+',' ',s)
     s = re.sub(r'(\\|/|\*)',' ',s)
     s = re.sub(r'(JUSTIN|GARZA|SQ|PAYPAL|PURCHASE)',' ',s)
     s = re.sub(r' (NC|CHARLOTTE)',' ',s)
     s = re.sub(r' (CA|CHATSWORTH)',' ',s)
     s = re.sub(r' . ',' ',s)
-    s = re.sub('\s+',' ',s)
+    s = re.sub(r'\s+',' ',s)
     s = re.sub(r'(-|#|:|,|\.com|\.|\'|\$|;)','',s)
     
     return s
@@ -351,6 +355,7 @@ def get_category_table(idf):
 
 # #test
 # temp = get_category_table(load_last_x_years(2))
+# temp.to_csv('category_table.csv',index=False)
 # print(len(temp))
 # display(temp)
 
@@ -370,70 +375,99 @@ def is_over(A,B,threshold=0.85,verbose=False):
 
 # print(is_over('yustin','justin',0.5,True)) 
 
-def fill_in_category(df1,threshold=0.80):
+def fill_in_category(df1,threshold=0.85,load_x_years=1):
     """
-    takes in a dataframe and fills in the Category columns
+    Takes a dataframe and autofills the Category column
+    using a reference table built from the last X years of transactions.
+    New or unknown locations will still be categorized manually.
     """
-    # this category_table is made based on the last two years of transactions.
-    # new locations and types of transactions will be filled in manually.
-    catt = get_category_table(load_last_x_years(2))
+    catt = get_category_table(load_last_x_years(load_x_years))
     df1['clean_loc'] = df1.Location.apply(clean_loc)
-    
-    for i in df1.iterrows():
-        if i[1]['Category'] == '':
-            for c in catt.iterrows():
-                # see if they match ... enough
-                if is_over(i[1]['clean_loc'],c[1]['clean_loc'],0.80,False) == True:
-                    df1.at[i[0],'Category'] = c[1]['Category']
 
-    df1 = df1.drop(columns=['clean_loc'])
+    for idx, row in df1.iterrows():
+        if row['Category'] == '':
+            for _, ref in catt.iterrows():
+                if is_over(row['clean_loc'], ref['clean_loc'], threshold, False):
+                    # print('#' * 20)
+                    print('AutoFill:', row['Category'], '-->', ref['Category'])
+                    print('#' * 25)
+
+                    df1.at[idx, 'Category'] = ref['Category'] + '_AutoFill'
+                    break
+
+    df1 = df1.drop(columns=['clean_loc'])  # remove helper column
     return df1
 
+# if __name__ == '__main__':
+#     pass
 
-def incorporated_data(current_data = None, new_data = None, autofillcat= True):
+
+
+
+def incorporated_data(current_data = None, year=2023, new_data = None, autofillcat= True):
     """
     this will merge the new data with the current data
     """
 
     if current_data == None:
         try:
-            current_data = load_year(this_year)
+            current_data = load_year(year)
         except Exception as ex:
-            current_data = load_year(this_year-1)
+            current_data = load_year(year-1)
         except Exception as ex:
             print(str(ex))
             print('error loading new data')
-            return None            
+            return None 
 
+    # print(current_data['Date'])    
+    # print(type(current_data['Date']))   
+
+    # convert these dates
+    try:
+        current_data['Date'] = pd.to_datetime(current_data['Date'],format='%Y-%m-%d')
+    except Exception as ex:
+        pass
+
+    try:
+        current_data['Date'] = pd.to_datetime(current_data['Date'],format='%m/%d/%Y')    
+    except Exception as ex:
+        pass
+    
     
     if new_data == None:
         try:
             new_data = process_new_data()
+            new_data['Date'] = pd.to_datetime(new_data['Date'],format='%Y-%m-%d') 
+
         except Exception as ex:
             print(str(ex))
             print('error loading new data')
             return None
+        
+
+    # result = current_data.copy()
     
+    # result = pd.concat([new_data,current_data])
     result = pd.concat([current_data,new_data])
     
-    # drop duplicates after the merge 
+    # # drop duplicates after the merge 
     result = result.drop_duplicates(['YYYYMMDD','Location','Delta','Balance'])
     
-    # sort the values 
+    # # sort the values 
     result = result.sort_values(by='YYYYMMDD', ascending = False)
 
-    # fill in the category 
+    # # fill in the category 
     result.loc[result['Category'].isnull(),'Category'] = ''
-    result = result.fillna('')
+    # result = result.fillna('')
     if (autofillcat):
-        result = fill_in_category(result,0.85)
+        result = fill_in_category(result,0.90,load_x_years=1)
     
-
     result['YYYYMMDD'] = result['YYYYMMDD'].astype(int)
 
     # date_format = '%m/%d/%Y'
-    result['Date'] = pd.to_datetime(result['Date'],format='mixed')
+    # result['Date'] = pd.to_datetime(result['Date'],format='mixed')
     # result['Date'] = pd.to_datetime(result['Date'],format='%m/%d/%Y')
+    # result['Date'] = pd.to_datetime(result['Date'],format='%Y-%m-%d')
     # result['Date'] = pd.to_datetime(result['Date'],format='%Y-%m-%d')
     
     # drop duplicates again
@@ -441,7 +475,7 @@ def incorporated_data(current_data = None, new_data = None, autofillcat= True):
     
     save_data(result)
 
-    # return result
+    return result
 
 ## used for testing
 # x = incorporated_data()
